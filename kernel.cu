@@ -145,40 +145,73 @@ int main()
 		return 1;
 	}*/
 
-	//int *cooColIndTemp = cooC
+	
+	// assume matrices A, B and D are ready.
 	int baseC, nnzC;
+	csrgemm2Info_t info = NULL;
+	size_t bufferSize;
+	void* buffer = NULL;
 	// nnzTotalDevHostPtr points to host memory
 	int* nnzTotalDevHostPtr = &nnzC;
+	float alpha = 1.0;
+	float beta = 0.0;
 	cusparseSetPointerMode(handle, CUSPARSE_POINTER_MODE_HOST);
+	printf("TEST\n");
+	// step 1: create an opaque structure
+	cusparseCreateCsrgemm2Info(&info);
+	printf("TEST1\n");
+
+	// step 2: allocate buffer for csrgemm2Nnz and csrgemm2
+	cusparseScsrgemm2_bufferSizeExt(handle, sizeOfMatrix, sizeOfMatrix, sizeOfMatrix, &alpha,
+		descr, NNZ, csrRowPtr, cooColIndex,
+		descr, NNZ, csrRowPtr, cooColIndex,
+		&beta,
+		descr, NNZ, csrRowPtr, cooColIndex,
+		info,
+		&bufferSize);
+	cudaMalloc(&buffer, bufferSize);
+	printf("TEST2\n");
+
+	// step 3: compute csrRowPtrC
 	cudaMalloc((void**)& csrRowPtrA2, sizeof(int)* ((size_t)sizeOfMatrix + 1));
-	status = cusparseXcsrgemmNnz(handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE, 
-		sizeOfMatrix, sizeOfMatrix, sizeOfMatrix,
+	printf("TEST3\n");
+	/*cusparseXcsrgemm2Nnz(handle, sizeOfMatrix, sizeOfMatrix, sizeOfMatrix,
 		descr, NNZ, csrRowPtr, cooColIndex,
 		descr, NNZ, csrRowPtr, cooColIndex,
-		descr, csrRowPtrA2, nnzTotalDevHostPtr);
-	if (status != CUSPARSE_STATUS_SUCCESS) {
-		printf("Error finding nnz = %d\n",status);
-	}
-	printf("\nTEST\n");
+		descr, NNZ, csrRowPtr, cooColIndex,
+		descr, csrRowPtrA2, nnzTotalDevHostPtr,
+		info, buffer);
+	*/
+
+
 	if (NULL != nnzTotalDevHostPtr) {
 		nnzC = *nnzTotalDevHostPtr;
-		printf("NNZ of A2 = %d\n", nnzC);
 	}
 	else {
 		cudaMemcpy(&nnzC, csrRowPtrA2 + sizeOfMatrix, sizeof(int), cudaMemcpyDeviceToHost);
 		cudaMemcpy(&baseC, csrRowPtrA2, sizeof(int), cudaMemcpyDeviceToHost);
 		nnzC -= baseC;
 	}
+
+	nnzC = 27968324;
+
+	// step 4: finish sparsity pattern and value of C
 	cudaMalloc((void**)& csrColIndA2, sizeof(int)* nnzC);
-	cudaMalloc((void**)& csrValA2, sizeof(float)* nnzC);
-	cusparseScsrgemm(handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE, 
-		sizeOfMatrix, sizeOfMatrix, sizeOfMatrix,
-		descr, NNZ,
-		cooVal, csrRowPtr, cooColIndex,
-		descr, NNZ,
-		cooVal, csrRowPtr, cooColIndex,
-		descr,
-		csrValA2, csrRowPtrA2, csrColIndA2);
+	cudaMalloc((void**)& csrValA2, sizeof(double)* nnzC);
+	// Remark: set csrValC to null if only sparsity pattern is required.
+	printf("TEST4\n");
+	cusparseScsrgemm2(handle, sizeOfMatrix, sizeOfMatrix, sizeOfMatrix, &alpha,
+		descr, NNZ, cooVal, csrRowPtr, cooColIndex,
+		descr, NNZ, cooVal, csrRowPtr, cooColIndex,
+		&beta,
+		descr, NNZ, cooVal, csrRowPtr, cooColIndex,
+		descr, csrValA2, csrRowPtrA2, csrColIndA2,
+		info, buffer);
+
+	// step 5: destroy the opaque structure
+	cusparseDestroyCsrgemm2Info(info);
+
+
 
 
 
